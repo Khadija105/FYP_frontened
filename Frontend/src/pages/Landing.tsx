@@ -1,16 +1,24 @@
-import React, { useState } from "react";
+import React from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
-import { Button } from "../components/ui";
+import { Button, SkeletonLoader } from "../components/ui";
 import { useTranslation } from "../hooks";
+import { useAsync } from "../hooks/useAsync";
 import { ArtworkCard } from "../components/common/Cards";
-import { MOCK_ARTWORKS } from "../data/mockData";
+import { artworkAPI } from "../services/api";
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [featured] = useState(MOCK_ARTWORKS.slice(0, 6));
+
+  // Fetch featured artworks
+  const { data: featured, loading: featuredLoading } = useAsync(
+    () => artworkAPI.getFeatured(),
+    [],
+    { autoFetch: true }
+  );
+  const featuredArtworks = featured ?? [];
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -95,7 +103,6 @@ const Landing: React.FC = () => {
               <Button
                 size="lg"
                 onClick={() => navigate("/browse")}
-               
                 className="px-8"
               >
                 {t("browseGallery")} →
@@ -151,33 +158,43 @@ const Landing: React.FC = () => {
             </p>
           </motion.div>
 
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          >
-            {featured.map((artwork) => (
-              <motion.div key={artwork.id} variants={itemVariants}>
-                <ArtworkCard artwork={artwork} showDetails />
+          {featuredLoading ? (
+            <SkeletonLoader count={6} />
+          ) : featuredArtworks.length > 0 ? (
+            <>
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                {featuredArtworks.map((artwork) => (
+                  <motion.div key={artwork.id} variants={itemVariants}>
+                    <ArtworkCard artwork={artwork} showDetails />
+                  </motion.div>
+                ))}
               </motion.div>
-            ))}
-          </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="text-center mt-12"
-          >
-            <Button
-              size="lg"
-              variant="ghost"
-              onClick={() => navigate("/browse")}
-            >
-              {t("viewAllArtworks")} →
-            </Button>
-          </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="text-center mt-12"
+              >
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  onClick={() => navigate("/browse")}
+                >
+                  {t("viewAllArtworks")} →
+                </Button>
+              </motion.div>
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-600 dark:text-gray-400">{t("noArtworks")}</p>
+            </div>
+          )}
         </PageContainer>
       </section>
 

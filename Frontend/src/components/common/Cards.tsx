@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Artwork } from "../../types";
-import { useCartStore, useUIStore } from "../../store";
+import { artistAPI } from "../../services/api";
+import { useAuthStore, useCartStore, useUIStore } from "../../store";
 import { Button, Badge } from "../ui";
 
 interface ArtworkCardProps {
@@ -168,12 +169,34 @@ export const Modal: React.FC<ModalProps> = ({
 
 export const ArtistCard: React.FC<{ artist: any }> = ({ artist }) => {
   const navigate = useNavigate();
-  const { isArtistFollowing, toggleFollowing } = useUIStore();
-  const [isFollowing, setIsFollowing] = useState(isArtistFollowing[artist.id] || false);
+  const { isArtistFollowing, setFollowing } = useUIStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const initialFollow = isArtistFollowing[artist.id] ?? !!artist.followingStatus;
+  const [isFollowing, setIsFollowing] = useState<boolean>(initialFollow);
+  const [pending, setPending] = useState(false);
 
-  const handleFollow = () => {
-    setIsFollowing(!isFollowing);
-    toggleFollowing(artist.id);
+  const handleFollow = async () => {
+    if (pending) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    const next = !isFollowing;
+    setIsFollowing(next);
+    setFollowing(artist.id, next);
+    setPending(true);
+    try {
+      const result = next
+        ? await artistAPI.follow(artist.id)
+        : await artistAPI.unfollow(artist.id);
+      setIsFollowing(!!result.followingStatus);
+      setFollowing(artist.id, !!result.followingStatus);
+    } catch {
+      setIsFollowing(!next);
+      setFollowing(artist.id, !next);
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -216,6 +239,7 @@ export const ArtistCard: React.FC<{ artist: any }> = ({ artist }) => {
             className="flex-1"
             variant={isFollowing ? "secondary" : "primary"}
             onClick={handleFollow}
+            isLoading={pending}
           >
             {isFollowing ? "Following" : "Follow"}
           </Button>

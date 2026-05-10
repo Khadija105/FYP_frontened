@@ -1,68 +1,155 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
-import { Button, Badge } from "../components/ui";
+import { Badge, Button, SkeletonLoader } from "../components/ui";
 import { ArtworkCard } from "../components/common/Cards";
 import { artworkAPI } from "../services/api";
-import { useCartStore } from "../store";
-import { MOCK_ARTWORKS } from "../data/mockData";
-import { Artwork, Comment } from "../types";
+import { useAuthStore, useCartStore } from "../store";
+import { useAsync, useMutation } from "../hooks/useAsync";
+import { getErrorMessage } from "../utils/errors";
+import { Comment } from "../types";
 
 const ArtworkDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const addToCart = useCartStore((state) => state.addToCart);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  const [artwork, setArtwork] = useState<Artwork | null>(
-    MOCK_ARTWORKS.find((a) => a.id === id) || null
-  );
-  const [relatedArtworks, setRelatedArtworks] = useState<Artwork[]>([]);
-  const [loading, setLoading] = useState(!artwork);
-  const [likes, setLikes] = useState(artwork?.likes || 0);
-  const [userLiked, setUserLiked] = useState(artwork?.userLiked || false);
-  const [comments, setComments] = useState<Comment[]>(artwork?.comments || []);
   const [commentText, setCommentText] = useState("");
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [likes, setLikes] = useState(0);
+  const [userLiked, setUserLiked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadArtwork = async () => {
-      if (id) {
-        const art = await artworkAPI.getById(id);
-        setArtwork(art);
-        setLikes(art?.likes || 0);
-        setUserLiked(art?.userLiked || false);
-        setComments(art?.comments || []);
-
-        if (art) {
-          const related = await artworkAPI.getAll({
-            category: art.category,
-          });
-          setRelatedArtworks(
-            related.filter((a) => a.id !== id).slice(0, 4)
-          );
+  // Fetch artwork
+  const {
+    data: artwork,
+    loading: artworkLoading,
+    error: artworkError,
+  } = useAsync(
+    () => (id ? artworkAPI.getById(id) : Promise.resolve(null)),
+    [id],
+    {
+      autoFetch: true,
+      onSuccess: (data) => {
+        if (data) {
+          setLikes(data.likes || 0);
+          setUserLiked(!!data.userLiked);
+          setComments(data.comments || []);
         }
-      }
-      setLoading(false);
-    };
+      },
+    }
+  );
 
-    loadArtwork();
-  }, [id]);
+  // Fetch related artworks
+  const {
+    data: relatedArtworks = [],
+  } = useAsync(
+    () => (artwork ? artworkAPI.getAll({ category: artwork.category }) : Promise.resolve([])),
+    [artwork?.category],
+    { autoFetch: true }
+  );
 
-  if (loading) {
+  // Like artwork mutation
+  const { mutate: toggleLike, loading: likePending } = useMutation(
+    (artworkId: string) => artworkAPI.toggleLike(artworkId),
+    {
+      onSuccess: (result) => {
+        setUserLiked(result.liked);
+        setLikes(result.likes);
+      },
+      onError: () => {
+        setError("Failed to update like");
+      },
+    }
+  );
+
+  // Add comment mutation
+  const { mutate: addComment, loading: commentPending } = useMutation(
+    (payload: { artworkId: string; text: string }) =>
+      artworkAPI.addComment(payload.artworkId, payload.text),
+    {
+      onSuccess: (comment) => {
+        setComments([comment, ...comments]);
+        setCommentText("");
+        setError(null);
+      },
+      onError: (err) => {
+        setError(getErrorMessage(err));
+      },
+    }
+  );
+
+  const handleLike = async () => {
+    if (!artwork || likePending) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+
+    const prevLiked = userLiked;
+    const prevLikes = likes;
+    setUserLiked(!prevLiked);
+    setLikes(prevLiked ? prevLikes - 1 : prevLikes + 1);
+
+    try {
+      await toggleLike(artwork.id);
+    } catch {
+      setUserLiked(prevLiked);
+      setLikes(prevLikes);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!artwork || !commentText.trim() || commentPending) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+
+    try {
+      await addComment({ artworkId: artwork.id, text: commentText.trim() });
+    } catch (err) {
+      console.error("Failed to post comment", err);
+    }
+  };
+
+  if (artworkLoading) {
     return (
       <MainLayout>
-        <PageContainer className="pt-20 text-center">
-          <p>Loading...</p>
+        <PageContainer className="pt-20">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <SkeletonLoader count={1} />
+            </div>
+            <div className="lg:col-span-1">
+              <SkeletonLoader count={3} />
+            </div>
+          </div>
         </PageContainer>
       </MainLayout>
     );
   }
 
-  if (!artwork) {
+  if (artworkError || !artwork) {
     return (
       <MainLayout>
         <PageContainer className="pt-20 text-center">
-          <p>Artwork not found</p>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="py-16"
+          >
+            <div className="text-6xl mb-4">🖼️</div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+              Artwork Not Found
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-8">
+              {artworkError || "The artwork you're looking for doesn't exist"}
+            </p>
+            <Button onClick={() => navigate("/browse")}>Browse Artworks</Button>
+          </motion.div>
         </PageContainer>
       </MainLayout>
     );
@@ -93,15 +180,12 @@ const ArtworkDetail: React.FC = () => {
               />
               <motion.button
                 whileHover={{ scale: 1.1 }}
-                onClick={() => {
-                  setUserLiked(!userLiked);
-                  setLikes(userLiked ? likes - 1 : likes + 1);
-                }}
-                className={`absolute top-4 right-4 p-3 rounded-full shadow-lg transition-colors ${
-                  userLiked
-                    ? "bg-red-500 text-white"
-                    : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                }`}
+                onClick={handleLike}
+                disabled={likePending}
+                className={`absolute top-4 right-4 p-3 rounded-full shadow-lg transition-colors disabled:opacity-60 ${userLiked
+                  ? "bg-red-500 text-white"
+                  : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  }`}
               >
                 {userLiked ? "❤️" : "🤍"}
               </motion.button>
@@ -191,6 +275,16 @@ const ArtworkDetail: React.FC = () => {
                 Comments ({comments.length})
               </h2>
 
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                >
+                  <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
+                </motion.div>
+              )}
+
               {/* Add Comment */}
               <motion.div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
                 <textarea
@@ -203,22 +297,11 @@ const ArtworkDetail: React.FC = () => {
                 <Button
                   size="sm"
                   className="mt-3"
-                  onClick={() => {
-                    if (commentText.trim()) {
-                      const newComment: Comment = {
-                        id: Date.now().toString(),
-                        username: "You",
-                        avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
-                        text: commentText,
-                        timestamp: new Date().toLocaleDateString(),
-                        likes: 0,
-                      };
-                      setComments([newComment, ...comments]);
-                      setCommentText("");
-                    }
-                  }}
+                  onClick={handleAddComment}
+                  isLoading={commentPending}
+                  disabled={!commentText.trim()}
                 >
-                  Post Comment
+                  {isAuthenticated ? "Post Comment" : "Sign in to comment"}
                 </Button>
               </motion.div>
 
@@ -299,7 +382,10 @@ const ArtworkDetail: React.FC = () => {
                 <Button
                   size="lg"
                   className="w-full"
-                  onClick={() => addToCart(artwork)}
+                  onClick={() => {
+                    addToCart(artwork);
+                    navigate("/cart");
+                  }}
                 >
                   Add to Cart
                 </Button>
@@ -309,118 +395,128 @@ const ArtworkDetail: React.FC = () => {
               </div>
             </motion.div>
 
-            {/* Artist Section */}
-            <motion.div
-              whileHover={{ borderColor: "#6366f1", y: -4 }}
-              className="mb-6 p-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer transition-all"
-              onClick={() => navigate(`/artist/${artwork.artist.id}`)}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              className={`p-3 rounded-full ${userLiked
+                  ? "bg-red-500 text-white"
+                  : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                }`}
             >
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                Created by
-              </p>
-              <div className="flex items-center gap-3 mb-3">
-                <motion.img
-                  whileHover={{ scale: 1.1 }}
-                  src={artwork.artist.avatar}
-                  alt={artwork.artist.name}
-                  className="w-12 h-12 rounded-full"
-                />
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
-                    {artwork.artist.name}
-                    {artwork.artist.isVerified && (
-                      <span className="text-indigo-600">✓</span>
-                    )}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {artwork.artist.followers.toLocaleString()} followers
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                {artwork.artist.bio}
-              </p>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="w-full mt-3"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/artist/${artwork.artist.id}`);
-                }}
-              >
-                View Profile
-              </Button>
-            </motion.div>
-
-            {/* Tags */}
-            <motion.div
-              whileHover={{ borderColor: "#6366f1" }}
-              className="p-6 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700"
-            >
-              <h3 className="font-bold mb-3 text-gray-900 dark:text-white">Tags</h3>
-              <div className="flex flex-wrap gap-2">
-                {artwork.tags.map((tag) => (
-                  <Badge key={tag} variant="primary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </motion.div>
-
-            {/* Details */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="mt-6 p-6 bg-gray-50 dark:bg-gray-800 rounded-xl space-y-3"
-            >
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">
-                  Category
-                </span>
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {artwork.category}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">
-                  Created
-                </span>
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {new Date(artwork.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">
-                  Likes
-                </span>
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  ❤️ {likes.toLocaleString()}
-                </span>
-              </div>
-            </motion.div>
+              {userLiked ? "❤️" : "🤍"}
+            </motion.button>
           </motion.div>
-        </motion.div>
 
-        {/* Related Artworks */}
-        {relatedArtworks.length > 0 && (
+          {/* Artist Section */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="mt-16"
+            whileHover={{ borderColor: "#6366f1", y: -4 }}
+            className="mb-6 p-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer transition-all"
+            onClick={() => navigate(`/artist/${artwork.artist.id}`)}
           >
-            <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">
-              Related Artworks
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {relatedArtworks.map((art) => (
-                <ArtworkCard key={art.id} artwork={art} />
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Created by
+            </p>
+            <div className="flex items-center gap-3 mb-3">
+              <motion.img
+                whileHover={{ scale: 1.1 }}
+                src={artwork.artist.avatar}
+                alt={artwork.artist.name}
+                className="w-12 h-12 rounded-full"
+              />
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
+                  {artwork.artist.name}
+                  {artwork.artist.isVerified && (
+                    <span className="text-indigo-600">✓</span>
+                  )}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {artwork.artist.followers.toLocaleString()} followers
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+              {artwork.artist.bio}
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full mt-3"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/artist/${artwork.artist.id}`);
+              }}
+            >
+              View Profile
+            </Button>
+          </motion.div>
+
+          {/* Tags */}
+          <motion.div
+            whileHover={{ borderColor: "#6366f1" }}
+            className="p-6 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700"
+          >
+            <h3 className="font-bold mb-3 text-gray-900 dark:text-white">Tags</h3>
+            <div className="flex flex-wrap gap-2">
+              {artwork.tags.map((tag) => (
+                <Badge key={tag} variant="primary">
+                  {tag}
+                </Badge>
               ))}
             </div>
           </motion.div>
-        )}
+
+          {/* Details */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="mt-6 p-6 bg-gray-50 dark:bg-gray-800 rounded-xl space-y-3"
+          >
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">
+                Category
+              </span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {artwork.category}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">
+                Created
+              </span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {new Date(artwork.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">
+                Likes
+              </span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                ❤️ {likes.toLocaleString()}
+              </span>
+            </div>
+          </motion.div>
+        </motion.div>
+
+      {/* Related Artworks */}
+      {relatedArtworks && relatedArtworks.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-16"
+        >
+          <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">
+            Related Artworks
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {relatedArtworks.map((art) => (
+              <ArtworkCard key={art.id} artwork={art} />
+            ))}
+          </div>
+        </motion.div>
+      )}
       </PageContainer>
     </MainLayout>
   );

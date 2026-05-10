@@ -1,50 +1,74 @@
 import { create } from "zustand";
 import { CartItem, Artwork, User, ChatSession, Message } from "../types";
-import { MOCK_CURRENT_USER } from "../data/mockData";
+import { authAPI, chatbotAPI, getToken, setToken } from "../services/api";
 
-// Theme Store
+type Theme = "light" | "dark" | "auto";
+
+const applyThemeToDocument = (effectiveDark: boolean) => {
+  if (typeof document === "undefined") return;
+  if (effectiveDark) document.documentElement.classList.add("dark");
+  else document.documentElement.classList.remove("dark");
+};
+
+const readStoredTheme = (): Theme => {
+  if (typeof window === "undefined") return "light";
+  const v = localStorage.getItem("theme");
+  if (v === "dark" || v === "light" || v === "auto") return v;
+  return "light";
+};
+
+const isSystemDark = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-color-scheme: dark)").matches;
+
 interface ThemeStore {
+  theme: Theme;
   isDark: boolean;
+  setTheme: (t: Theme) => void;
   toggleDarkMode: () => void;
 }
 
-export const useThemeStore = create<ThemeStore>((set) => ({
-  isDark: localStorage.getItem("theme") === "dark",
-  toggleDarkMode: () =>
-    set((state) => {
-      const newDark = !state.isDark;
-      localStorage.setItem("theme", newDark ? "dark" : "light");
-      if (newDark) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      return { isDark: newDark };
-    }),
-}));
+export const useThemeStore = create<ThemeStore>((set, get) => {
+  const initial: Theme = readStoredTheme();
+  const initialDark = initial === "dark" || (initial === "auto" && isSystemDark());
+  applyThemeToDocument(initialDark);
 
-// Language Store
+  return {
+    theme: initial,
+    isDark: initialDark,
+    setTheme: (t: Theme) =>
+      set(() => {
+        if (typeof window !== "undefined") localStorage.setItem("theme", t);
+        const dark = t === "dark" || (t === "auto" && isSystemDark());
+        applyThemeToDocument(dark);
+        return { theme: t, isDark: dark };
+      }),
+    toggleDarkMode: () => {
+      const next: Theme = get().isDark ? "light" : "dark";
+      get().setTheme(next);
+    },
+  };
+});
+
 interface LanguageStore {
   language: string;
   setLanguage: (lang: string) => void;
 }
 
 export const useLanguageStore = create<LanguageStore>((set) => ({
-  language: typeof window !== "undefined" ? (localStorage.getItem("language") || "en") : "en",
-  setLanguage: (lang: string) =>
+  language:
+    typeof window !== "undefined" ? localStorage.getItem("language") || "en" : "en",
+  setLanguage: (lang) =>
     set(() => {
       if (typeof window !== "undefined") {
         localStorage.setItem("language", lang);
-      }
-      // You can add language-specific logic here (e.g., document.documentElement.lang = lang)
-      if (typeof window !== "undefined") {
         document.documentElement.lang = lang;
       }
       return { language: lang };
     }),
 }));
 
-// Cart Store
 interface CartStore {
   items: CartItem[];
   addToCart: (artwork: Artwork) => void;
@@ -55,86 +79,117 @@ interface CartStore {
 
 export const useCartStore = create<CartStore>((set, get) => ({
   items: [],
-  addToCart: (artwork: Artwork) =>
+  addToCart: (artwork) =>
     set((state) => {
-      const existing = state.items.find((item) => item.artwork.id === artwork.id);
+      const existing = state.items.find((i) => i.artwork.id === artwork.id);
       if (existing) {
         return {
-          items: state.items.map((item) =>
-            item.artwork.id === artwork.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
+          items: state.items.map((i) =>
+            i.artwork.id === artwork.id ? { ...i, quantity: i.quantity + 1 } : i
           ),
         };
       }
       return { items: [...state.items, { artwork, quantity: 1 }] };
     }),
-  removeFromCart: (artworkId: string) =>
-    set((state) => ({
-      items: state.items.filter((item) => item.artwork.id !== artworkId),
-    })),
+  removeFromCart: (id) =>
+    set((s) => ({ items: s.items.filter((i) => i.artwork.id !== id) })),
   clearCart: () => set({ items: [] }),
-  getTotal: () => {
-    const items = get().items;
-    return items.reduce((total, item) => total + item.artwork.price * item.quantity, 0);
-  },
+  getTotal: () =>
+    get().items.reduce((t, i) => t + i.artwork.price * i.quantity, 0),
 }));
 
-// Auth Store
 interface AuthStore {
   user: User | null;
   isAuthenticated: boolean;
+  bootstrapping: boolean;
+  bootstrapError: string | null;
+  bootstrap: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
-  user: MOCK_CURRENT_USER,
-  isAuthenticated: true,
-  login: async (email: string, password: string) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    set({
-      user: { ...MOCK_CURRENT_USER, email },
-      isAuthenticated: true,
-    });
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  user: null,
+  isAuthenticated: false,
+  bootstrapping: true,
+  bootstrapError: null,
+
+  bootstrap: async () => {
+    const token = getToken();
+    if (!token) {
+      set({ bootstrapping: false, bootstrapError: null });
+      return;
+    }
+    try {
+      const user = await authAPI.me();
+      set({ user, isAuthenticated: true, bootstrapError: null });
+    } catch (error) {
+      setToken(null);
+      set({ user: null, isAuthenticated: false, bootstrapError: "Session expired. Please log in again." });
+    } finally {
+      set({ bootstrapping: false });
+    }
   },
-  register: async (name: string, email: string, password: string) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    set({
-      user: { ...MOCK_CURRENT_USER, name, email },
-      isAuthenticated: true,
-    });
+
+  login: async (email, password) => {
+    try {
+      const { user, token } = await authAPI.login(email, password);
+      setToken(token);
+      set({ user, isAuthenticated: true, bootstrapError: null });
+    } catch (error) {
+      set({ bootstrapError: "Invalid email or password" });
+      throw error;
+    }
   },
-  logout: () => set({ user: null, isAuthenticated: false }),
+
+  register: async (name, email, password) => {
+    try {
+      const { user, token } = await authAPI.register(name, email, password);
+      setToken(token);
+      set({ user, isAuthenticated: true, bootstrapError: null });
+    } catch (error) {
+      set({ bootstrapError: "Registration failed" });
+      throw error;
+    }
+  },
+
+  logout: async () => {
+    try {
+      await authAPI.logout();
+    } catch {
+      /* ignore - server may already be unreachable or token expired */
+    }
+    setToken(null);
+    set({ user: null, isAuthenticated: false, bootstrapError: null });
+  },
+
+  refreshUser: async () => {
+    if (!getToken()) return;
+    try {
+      const user = await authAPI.me();
+      set({ user, isAuthenticated: true });
+    } catch {
+      /* ignore */
+    }
+  },
 }));
 
-// Chat Store
 interface ChatStore {
   currentSession: ChatSession | null;
+  sessionId: string | null;
   createSession: () => void;
-  addMessage: (message: Message) => void;
-  botResponse: (userMessage: string) => Promise<void>;
+  addMessage: (m: Message) => void;
+  botResponse: (
+    userMessage: string
+  ) => Promise<{ response: string; suggestedArtworks: Artwork[] } | null>;
+  resetSession: () => void;
 }
-
-const generateBotResponse = (userMessage: string): string => {
-  const responses = [
-    "That's a fascinating piece! I can see influences of contemporary minimalism here.",
-    "This artwork resonates with themes of digital transformation.",
-    "The color palette here is absolutely masterful.",
-    "I'm intrigued by the artist's use of negative space.",
-    "This reminds me of some groundbreaking work from emerging artists.",
-    "The technical execution is remarkable.",
-    "There's a beautiful balance of form and function here.",
-    "This piece really captures the zeitgeist of modern art.",
-  ];
-  return responses[Math.floor(Math.random() * responses.length)];
-};
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   currentSession: null,
+  sessionId: null,
   createSession: () =>
     set({
       currentSession: {
@@ -142,24 +197,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         messages: [],
         createdAt: new Date().toISOString(),
       },
+      sessionId: null,
     }),
-  addMessage: (message: Message) =>
-    set((state) => ({
-      currentSession: state.currentSession
+  addMessage: (message) =>
+    set((s) => ({
+      currentSession: s.currentSession
         ? {
-            ...state.currentSession,
-            messages: [...state.currentSession.messages, message],
+            ...s.currentSession,
+            messages: [...s.currentSession.messages, message],
           }
         : null,
     })),
-  botResponse: async (userMessage: string) => {
-    // Add user message
-    set((state) => ({
-      currentSession: state.currentSession
+  botResponse: async (userMessage) => {
+    set((s) => ({
+      currentSession: s.currentSession
         ? {
-            ...state.currentSession,
+            ...s.currentSession,
             messages: [
-              ...state.currentSession.messages,
+              ...s.currentSession.messages,
               {
                 id: `msg_${Date.now()}`,
                 sender: "user",
@@ -171,42 +226,64 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : null,
     }));
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Add bot response
-    set((state) => ({
-      currentSession: state.currentSession
-        ? {
-            ...state.currentSession,
-            messages: [
-              ...state.currentSession.messages,
-              {
-                id: `msg_${Date.now()}_bot`,
-                sender: "bot",
-                content: generateBotResponse(userMessage),
-                timestamp: new Date().toISOString(),
-              },
-            ],
-          }
-        : null,
-    }));
+    try {
+      const result = await chatbotAPI.sendMessage(userMessage, get().sessionId);
+      set({ sessionId: result.sessionId });
+      set((s) => ({
+        currentSession: s.currentSession
+          ? {
+              ...s.currentSession,
+              messages: [
+                ...s.currentSession.messages,
+                {
+                  id: `msg_${Date.now()}_bot`,
+                  sender: "bot",
+                  content: result.response,
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            }
+          : null,
+      }));
+      return { response: result.response, suggestedArtworks: result.suggestedArtworks };
+    } catch (err) {
+      set((s) => ({
+        currentSession: s.currentSession
+          ? {
+              ...s.currentSession,
+              messages: [
+                ...s.currentSession.messages,
+                {
+                  id: `msg_${Date.now()}_err`,
+                  sender: "bot",
+                  content:
+                    "Sorry, the assistant is temporarily unavailable. Please try again.",
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            }
+          : null,
+      }));
+      return null;
+    }
   },
+  resetSession: () => set({ currentSession: null, sessionId: null }),
 }));
 
-// UI Store for modals and common states
 interface UIStore {
   isArtistFollowing: Record<string, boolean>;
+  setFollowing: (artistId: string, following: boolean) => void;
   toggleFollowing: (artistId: string) => void;
 }
 
-export const useUIStore = create<UIStore>((set) => ({
+export const useUIStore = create<UIStore>((set, get) => ({
   isArtistFollowing: {},
-  toggleFollowing: (artistId: string) =>
-    set((state) => ({
-      isArtistFollowing: {
-        ...state.isArtistFollowing,
-        [artistId]: !state.isArtistFollowing[artistId],
-      },
+  setFollowing: (artistId, following) =>
+    set((s) => ({
+      isArtistFollowing: { ...s.isArtistFollowing, [artistId]: following },
     })),
+  toggleFollowing: (artistId) => {
+    const current = !!get().isArtistFollowing[artistId];
+    get().setFollowing(artistId, !current);
+  },
 }));

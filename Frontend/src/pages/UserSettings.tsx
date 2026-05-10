@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
 import { Button, Card } from "../components/ui";
 import { useTranslation } from "../hooks";
-import { useThemeStore } from "../store";
+import { useThemeStore, useAuthStore } from "../store";
+import { userAPI, authAPI } from "../services/api";
 
 interface Settings {
   emailNotifications: boolean;
@@ -20,6 +21,7 @@ const UserSettings: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isDark, toggleTheme } = useThemeStore();
+  const { isAuthenticated, bootstrapping } = useAuthStore();
 
   const [settings, setSettings] = useState<Settings>({
     emailNotifications: true,
@@ -32,6 +34,28 @@ const UserSettings: React.FC = () => {
   });
 
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (bootstrapping) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    const loadSettings = async () => {
+      try {
+        const userSettings = await userAPI.getSettings();
+        setSettings(userSettings);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSettings();
+  }, [isAuthenticated, bootstrapping, navigate]);
 
   const handleToggle = (key: keyof Settings) => {
     const newSettings = { ...settings, [key]: !settings[key] };
@@ -56,9 +80,28 @@ const UserSettings: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await userAPI.updateSettings(settings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("Are you sure? This cannot be undone.")) return;
+    try {
+      await authAPI.deleteAccount();
+      navigate("/login");
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to delete account");
+    }
   };
 
   const settingSections = [
@@ -121,7 +164,16 @@ const UserSettings: React.FC = () => {
             </p>
           </div>
 
-          {/* Success Message */}
+          {/* Messages */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-800 dark:text-red-200"
+            >
+              ✗ {error}
+            </motion.div>
+          )}
           {saved && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -131,6 +183,12 @@ const UserSettings: React.FC = () => {
             >
               ✓ {t("settingsSaved")}
             </motion.div>
+          )}
+
+          {loading && (
+            <div className="text-center py-8">
+              <p className="text-gray-600 dark:text-gray-400">Loading settings...</p>
+            </div>
           )}
 
           {/* Theme Settings */}
@@ -233,6 +291,7 @@ const UserSettings: React.FC = () => {
               <Button
                 variant="secondary"
                 className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 border border-red-200 dark:border-red-800"
+                onClick={handleDeleteAccount}
               >
                 Delete Account
               </Button>
@@ -240,11 +299,18 @@ const UserSettings: React.FC = () => {
           </Card>
 
           {/* Save Button */}
-          <div className="mt-8 flex justify-end">
-            <Button onClick={handleSave} variant="primary" size="lg">
-              Save Settings
-            </Button>
-          </div>
+          {!loading && (
+            <div className="mt-8 flex justify-end">
+              <Button
+                onClick={handleSave}
+                variant="primary"
+                size="lg"
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save Settings"}
+              </Button>
+            </div>
+          )}
         </motion.div>
       </PageContainer>
     </MainLayout>

@@ -1,42 +1,52 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
 import { Button } from "../components/ui";
 import { ArtworkCard } from "../components/common/Cards";
-import { artistAPI, artworkAPI } from "../services/api";
-import { MOCK_ARTISTS, MOCK_ARTWORKS } from "../data/mockData";
-import { useUIStore } from "../store";
+import { artistAPI } from "../services/api";
+import { useAuthStore, useUIStore } from "../store";
 import { Artist, Artwork } from "../types";
 
 const ArtistProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [artist, setArtist] = useState<Artist | null>(
-    MOCK_ARTISTS.find((a) => a.id === id) || null
-  );
+  const [artist, setArtist] = useState<Artist | null>(null);
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [loading, setLoading] = useState(!artist);
-  const { toggleFollowing } = useUIStore();
+  const [loading, setLoading] = useState(true);
+  const [followPending, setFollowPending] = useState(false);
+  const { setFollowing } = useUIStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
+    let cancelled = false;
     const loadArtist = async () => {
-      if (id) {
-        const art = await artistAPI.getById(id);
-        setArtist(art);
-
-        if (art) {
-          const arts = await artistAPI.getArtworks(id);
-          setArtworks(arts);
-        }
+      if (!id) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      setLoading(true);
+      try {
+        const art = await artistAPI.getById(id);
+        if (cancelled) return;
+        setArtist(art);
+        setIsFollowing(!!art?.followingStatus);
+        if (art) {
+          setFollowing(art.id, !!art.followingStatus);
+          const arts = await artistAPI.getArtworks(id);
+          if (!cancelled) setArtworks(arts);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-
     loadArtist();
-  }, [id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, setFollowing]);
 
   if (loading) {
     return (
@@ -58,9 +68,30 @@ const ArtistProfile: React.FC = () => {
     );
   }
 
-  const handleFollow = () => {
-    setIsFollowing(!isFollowing);
-    toggleFollowing(artist.id);
+  const handleFollow = async () => {
+    if (!artist || followPending) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    setFollowPending(true);
+    const next = !isFollowing;
+    setIsFollowing(next);
+    setFollowing(artist.id, next);
+    try {
+      const updated = next
+        ? await artistAPI.follow(artist.id)
+        : await artistAPI.unfollow(artist.id);
+      setArtist(updated);
+      setIsFollowing(!!updated.followingStatus);
+      setFollowing(artist.id, !!updated.followingStatus);
+    } catch (err) {
+      setIsFollowing(!next);
+      setFollowing(artist.id, !next);
+      console.error("Follow toggle failed", err);
+    } finally {
+      setFollowPending(false);
+    }
   };
 
   return (
@@ -132,6 +163,7 @@ const ArtistProfile: React.FC = () => {
                 size="lg"
                 variant={isFollowing ? "secondary" : "primary"}
                 onClick={handleFollow}
+                isLoading={followPending}
               >
                 {isFollowing ? "Following" : "Follow"}
               </Button>

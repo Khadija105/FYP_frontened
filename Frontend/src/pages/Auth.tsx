@@ -4,34 +4,41 @@ import { useNavigate, Link } from "react-router-dom";
 import { Button, Input } from "../components/ui";
 import { useTranslation } from "../hooks";
 import { useAuthStore } from "../store";
+import { getErrorMessage } from "../utils/errors";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const login = useAuthStore((state) => state.login);
-  const [email, setEmail] = useState("alex@example.com");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
     if (!email) newErrors.email = t("emailRequired");
+    else if (!email.includes("@")) newErrors.email = t("emailInvalid") || "Invalid email";
     if (!password) newErrors.password = t("passwordRequired");
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setGeneralError(null);
       return;
     }
 
     setIsLoading(true);
+    setGeneralError(null);
     try {
-      await login(email, password);
+      await login(email.toLowerCase(), password);
       navigate("/browse");
     } catch (error) {
-      setErrors({ submit: t("loginFailed") });
+      const message = getErrorMessage(error);
+      setGeneralError(message);
+      setErrors({});
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +83,7 @@ const Login: React.FC = () => {
           transition={{ delay: 0.2 }}
           className="text-center mb-8"
         >
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-4 mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             {t("welcomeBack")}
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
@@ -85,6 +92,16 @@ const Login: React.FC = () => {
         </motion.div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {generalError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+            >
+              <p className="text-red-800 dark:text-red-200 text-sm">{generalError}</p>
+            </motion.div>
+          )}
+
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -116,16 +133,6 @@ const Login: React.FC = () => {
               icon="🔒"
             />
           </motion.div>
-
-          {errors.submit && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-red-600 text-sm"
-            >
-              {errors.submit}
-            </motion.p>
-          )}
 
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -166,6 +173,7 @@ const Login: React.FC = () => {
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const register = useAuthStore((state) => state.register);
   const [formData, setFormData] = useState({
     name: "",
@@ -175,36 +183,44 @@ const Register: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
+    setErrors({ ...errors, [e.target.name]: "" });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name) newErrors.name = t("name");
+    if (!formData.name.trim()) newErrors.name = t("nameRequired") || "Name is required";
     if (!formData.email) newErrors.email = t("emailRequired");
+    else if (!formData.email.includes("@")) newErrors.email = t("emailInvalid") || "Invalid email";
     if (!formData.password) newErrors.password = t("passwordRequired");
+    else if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = t("passwordMismatch");
     }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setGeneralError(null);
       return;
     }
 
     setIsLoading(true);
+    setGeneralError(null);
     try {
-      await register(formData.name, formData.email, formData.password);
+      await register(formData.name, formData.email.toLowerCase(), formData.password);
       navigate("/browse");
     } catch (error) {
-      setErrors({ submit: t("loginFailed") });
+      const message = getErrorMessage(error);
+      setGeneralError(message);
+      setErrors({});
     } finally {
       setIsLoading(false);
     }
@@ -258,6 +274,16 @@ const Register: React.FC = () => {
         </motion.div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {generalError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+            >
+              <p className="text-red-800 dark:text-red-200 text-sm">{generalError}</p>
+            </motion.div>
+          )}
+
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -324,16 +350,6 @@ const Register: React.FC = () => {
               icon="🔒"
             />
           </motion.div>
-
-          {errors.submit && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-red-600 text-sm"
-            >
-              {errors.submit}
-            </motion.p>
-          )}
 
           <motion.div
             initial={{ opacity: 0, y: 10 }}
