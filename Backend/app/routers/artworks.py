@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import store
 from ..deps import current_user, current_user_optional
+from ..exceptions import NotFoundError
+from ..logging_config import get_logger
 from ..schemas import (
     Artwork,
     ArtworkCreate,
@@ -15,21 +17,24 @@ from ..schemas import (
     MessageResponse,
 )
 from ..util import find_artist, get_artwork_or_404, serialize_artwork
+from ..validation import validate_artwork_data, validate_comment
 
+log = get_logger("artworks")
 router = APIRouter(prefix="/api/artworks", tags=["artworks"])
 
 
 def _sort(items: list, sort_by: Optional[str]) -> list:
+    """Sort artworks based on sort_by parameter"""
     if not sort_by:
         return items
     if sort_by == "price-low":
-        return sorted(items, key=lambda a: a["price"])
+        return sorted(items, key=lambda a: a.get("price", 0))
     if sort_by == "price-high":
-        return sorted(items, key=lambda a: a["price"], reverse=True)
+        return sorted(items, key=lambda a: a.get("price", 0), reverse=True)
     if sort_by == "trending":
         return sorted(items, key=lambda a: a.get("likes", 0), reverse=True)
     if sort_by == "newest":
-        return sorted(items, key=lambda a: a["createdAt"], reverse=True)
+        return sorted(items, key=lambda a: a.get("createdAt", ""), reverse=True)
     return items
 
 
@@ -42,10 +47,11 @@ def list_artworks(
     sort_by: Optional[str] = None,
     viewer: Optional[dict] = Depends(current_user_optional),
 ):
-    results = list(store.db()["artworks"])
+    """List all artworks with optional filtering"""
+    results = list(store.db().get("artworks", []))
 
     if category and category != "All":
-        results = [a for a in results if a["category"] == category]
+        results = [a for a in results if a.get("category") == category]
 
     if tags:
         wanted = [t.strip() for t in tags.split(",") if t.strip()]
@@ -53,21 +59,28 @@ def list_artworks(
             results = [a for a in results if any(t in a.get("tags", []) for t in wanted)]
 
     if min_price is not None:
-        results = [a for a in results if a["price"] >= min_price]
+        results = [a for a in results if a.get("price", 0) >= min_price]
     if max_price is not None:
-        results = [a for a in results if a["price"] <= max_price]
+        results = [a for a in results if a.get("price", 0) <= max_price]
 
     return [serialize_artwork(a, viewer) for a in _sort(results, sort_by)]
 
 
 @router.get("/featured", response_model=List[Artwork])
 def featured(viewer: Optional[dict] = Depends(current_user_optional)):
-    return [serialize_artwork(a, viewer) for a in store.db()["artworks"][:6]]
+    """Get featured artworks"""
+    items = store.db().get("artworks", [])[:6]
+    return [serialize_artwork(a, viewer) for a in items]
 
 
 @router.get("/trending", response_model=List[Artwork])
 def trending(viewer: Optional[dict] = Depends(current_user_optional)):
-    items = sorted(store.db()["artworks"], key=lambda a: a.get("likes", 0), reverse=True)[:8]
+    """Get trending artworks sorted by likes"""
+    items = sorted(
+        store.db().get("artworks", []),
+        key=lambda a: a.get("likes", 0),
+        reverse=True
+    )[:8]
     return [serialize_artwork(a, viewer) for a in items]
 
 
@@ -76,25 +89,31 @@ def search(
     q: str = Query("", min_length=0),
     viewer: Optional[dict] = Depends(current_user_optional),
 ):
+    """Search artworks by title, artist name, description, or tags"""
     needle = q.lower().strip()
-    items = store.db()["artworks"]
+    items = store.db().get("artworks", [])
+    
     if not needle:
         return [serialize_artwork(a, viewer) for a in items]
+    
     matches = []
     for a in items:
-        artist = find_artist(a["artistId"]) or {}
+        artist = find_artist(a.get("artistId", "")) or {}
         if (
-            needle in a["title"].lower()
+            needle in a.get("title", "").lower()
             or needle in artist.get("name", "").lower()
             or needle in a.get("description", "").lower()
             or any(needle in t.lower() for t in a.get("tags", []))
         ):
             matches.append(a)
+    
+    log.info(f"Search: '{q}' returned {len(matches)} results")
     return [serialize_artwork(m, viewer) for m in matches]
 
 
 @router.get("/{artwork_id}", response_model=Artwork)
 def get_artwork(artwork_id: str, viewer: Optional[dict] = Depends(current_user_optional)):
+    """Get artwork by ID with comments"""
     art = get_artwork_or_404(artwork_id)
     return serialize_artwork(art, viewer, include_comments=True)
 
