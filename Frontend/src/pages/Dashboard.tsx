@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
 import { Card, Button, Badge } from "../components/ui";
 import { dashboardAPI, adminAPI } from "../services/api";
 import { ListingItem, VerificationRequest, User, Artwork } from "../types";
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
   const [listings, setListings] = useState<ListingItem[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -29,6 +32,27 @@ const Dashboard: React.FC = () => {
       setRevenueData(revenueChartData);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadArtwork = () => {
+    navigate("/add-artwork");
+  };
+
+  const handleViewAnalytics = () => {
+    setActiveTab("analytics");
+  };
+
+  const handleWithdraw = async () => {
+    setWithdrawing(true);
+    try {
+      await dashboardAPI.withdraw();
+      alert("Withdrawal request submitted successfully!");
+      await loadData();
+    } catch (error) {
+      alert("Failed to process withdrawal. Please try again.");
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -182,14 +206,14 @@ const Dashboard: React.FC = () => {
                   Quick Actions
                 </h3>
                 <div className="space-y-3">
-                  <Button size="lg" className="w-full">
+                  <Button size="lg" className="w-full" onClick={handleUploadArtwork}>
                     Upload New Artwork
                   </Button>
-                  <Button size="lg" variant="secondary" className="w-full">
+                  <Button size="lg" variant="secondary" className="w-full" onClick={handleViewAnalytics}>
                     View Analytics
                   </Button>
-                  <Button size="lg" variant="ghost" className="w-full">
-                    Withdraw Earnings
+                  <Button size="lg" variant="ghost" className="w-full" onClick={handleWithdraw} disabled={withdrawing}>
+                    {withdrawing ? "Processing..." : "Withdraw Earnings"}
                   </Button>
                 </div>
               </Card>

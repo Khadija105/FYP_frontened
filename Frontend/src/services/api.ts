@@ -199,6 +199,8 @@ export const userAPI = {
 
   getFavorites: (): Promise<Artwork[]> => unwrap(http.get("/api/users/me/favorites")),
   getActivity: () => unwrap(http.get("/api/users/me/activity")),
+
+  becomeArtist: (): Promise<UserProfile> => unwrap(http.post("/api/users/me/become-artist")),
 };
 
 // ===== Cart / Orders ======================================================
@@ -318,4 +320,9 @@ export const uploadAPI = {
     const { data } = await http.post("/api/uploads/image", form, config);
     return data;
   },
+};
+
+// ===== Configuration ======================================================
+export const configAPI = {
+  getCategories: (): Promise<string[]> => unwrap(http.get("/api/config/categories")),
 };

@@ -1,4 +1,4 @@
-"""Room mockup layouts + artist verification submissions."""
+"""Room mockup layouts + artist verification submissions + configuration."""
 
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -16,6 +16,25 @@ from ..schemas import (
 )
 
 router = APIRouter(tags=["extras"])
+
+# Configuration constants
+ARTWORK_CATEGORIES = [
+    "Digital Art",
+    "Abstract",
+    "Minimalism",
+    "Photography",
+    "Illustration",
+    "3D Art",
+    "Mixed Media",
+]
+
+
+# Configuration endpoints ---------------------------------------------------
+
+@router.get("/api/config/categories", response_model=List[str])
+def get_categories():
+    """Get list of available artwork categories"""
+    return ARTWORK_CATEGORIES
 
 
 # Room layouts ---------------------------------------------------------------

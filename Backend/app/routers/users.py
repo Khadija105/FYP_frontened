@@ -137,3 +137,30 @@ def my_activity(user: dict = Depends(current_user)):
             )
     activity.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
     return activity[:50]
+
+
+@router.post("/me/become-artist")
+def become_artist(user: dict = Depends(current_user)):
+    print("DEBUG: become_artist endpoint called")
+    if user["role"] == "artist":
+        raise HTTPException(status_code=409, detail="Already an artist")
+    if user["role"] == "admin":
+        raise HTTPException(status_code=409, detail="Admins cannot change their role")
+
+    user["role"] = "artist"
+    db = store.db()
+
+    # Create artist profile if doesn't exist
+    artist = next((a for a in db.get("artists", []) if a["id"] == user["id"]), None)
+    if not artist:
+        db.setdefault("artists", []).append({
+            "id": user["id"],
+            "name": user["name"],
+            "avatar": user["avatar"],
+            "bio": user.get("bio", ""),
+            "followers": 0,
+            "isVerified": False,
+        })
+
+    store.save()
+    return _build_profile(user)

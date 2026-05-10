@@ -11,6 +11,7 @@ import RoomMockup from "./pages/RoomMockup";
 import ArtistProfile from "./pages/ArtistProfile";
 import Chat from "./pages/Chat";
 import Cart from "./pages/Cart";
+import AddArtwork from "./pages/AddArtwork";
 import Dashboard, { AdminPanel } from "./pages/Dashboard";
 import { Login, Register } from "./pages/Auth";
 import UserProfile from "./pages/UserProfile";
@@ -70,6 +71,7 @@ function App() {
           <Route path="/cart" element={<ProtectedRoute element={<Cart />} />} />
           <Route path="/profile" element={<ProtectedRoute element={<UserProfile />} />} />
           <Route path="/settings" element={<ProtectedRoute element={<UserSettings />} />} />
+          <Route path="/add-artwork" element={<ProtectedRoute element={<AddArtwork />} />} />
           <Route path="/dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
           <Route path="/admin" element={<ProtectedRoute element={<AdminPanel />} />} />
 
