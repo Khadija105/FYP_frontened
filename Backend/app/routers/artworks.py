@@ -120,9 +120,7 @@ def get_artwork(artwork_id: str, viewer: Optional[dict] = Depends(current_user_o
 
 @router.post("", response_model=Artwork, status_code=201)
 def create_artwork(payload: ArtworkCreate, user: dict = Depends(current_user)):
-    if user["role"] not in ("artist", "admin"):
-        raise HTTPException(status_code=403, detail="Only artists can create artworks")
-
+    # Allow any authenticated user to create artwork
     artist_id = payload.artistId or user["id"]
     if not find_artist(artist_id):
         store.db()["artists"].append(

@@ -45,8 +45,10 @@ def serialize_artist(artist: dict, viewer: Optional[dict] = None) -> dict:
 
 def serialize_artwork(art: dict, viewer: Optional[dict] = None, *, include_comments: bool = False) -> dict:
     db = store.db()
-    artist = find_artist(art["artistId"]) or {
-        "id": art["artistId"],
+    # Handle both artistId and artist fields for backward compatibility
+    artist_id = art.get("artistId") or (art.get("artist", {}).get("id") if isinstance(art.get("artist"), dict) else None)
+    artist = find_artist(artist_id) or {
+        "id": artist_id or "unknown",
         "name": "Unknown",
         "avatar": "",
         "bio": "",

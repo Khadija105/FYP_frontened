@@ -174,6 +174,7 @@ USERS = [
         "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
         "role": "user",
         "createdAt": "2023-06-15",
+        "passwordHash": "pbkdf2_sha256$200000$bc8f706ee21bbe7c59dc4110f72e27cf$8b1a4a40bfddfb26295aa904dd5fc3eac337445f49c77152b195c8b49d5e4428",
     },
     {
         "id": "user2",
@@ -182,6 +183,7 @@ USERS = [
         "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop",
         "role": "artist",
         "createdAt": "2023-05-10",
+        "passwordHash": "pbkdf2_sha256$200000$96113a5762b89f78b07e422e74edcb4a$03fea3f8c3200a4a4e8c593ed03e2b42bec1899eebb585ab26eabf403334a6c5",
     },
 ]
 
