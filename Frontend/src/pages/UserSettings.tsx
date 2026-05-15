@@ -37,6 +37,8 @@ const UserSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [becomingArtist, setBecomingArtist] = useState(false);
 
   useEffect(() => {
     if (bootstrapping) return;
@@ -46,8 +48,12 @@ const UserSettings: React.FC = () => {
     }
     const loadSettings = async () => {
       try {
-        const userSettings = await userAPI.getSettings();
+        const [userSettings, profile] = await Promise.all([
+          userAPI.getSettings(),
+          userAPI.getProfile(),
+        ]);
         setSettings(userSettings);
+        setUserProfile(profile);
       } catch (err) {
         console.error("Failed to load settings:", err);
       } finally {
@@ -91,6 +97,21 @@ const UserSettings: React.FC = () => {
       setError(err.response?.data?.detail || "Failed to save settings");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleBecomeArtist = async () => {
+    setBecomingArtist(true);
+    setError(null);
+    try {
+      await userAPI.becomeArtist();
+      setUserProfile((prev: any) => ({ ...prev, role: "artist" }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to become artist");
+    } finally {
+      setBecomingArtist(false);
     }
   };
 
@@ -278,6 +299,26 @@ const UserSettings: React.FC = () => {
               </Card>
             </motion.div>
           ))}
+
+          {/* Artist Section */}
+          {userProfile && userProfile.role !== "artist" && (
+            <Card className="mb-6 p-8 border-2 border-indigo-200 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-900/10">
+              <h2 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mb-4">
+                🎨 Become an Artist
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Unlock the ability to upload and sell your own artworks on Artellect. Start sharing your creative work with our community!
+              </p>
+              <Button
+                onClick={handleBecomeArtist}
+                variant="primary"
+                isLoading={becomingArtist}
+                className="bg-indigo-600 hover:bg-indigo-700"
+              >
+                {becomingArtist ? "Upgrading..." : "Become an Artist"}
+              </Button>
+            </Card>
+          )}
 
           {/* Danger Zone */}
           <Card className="p-8 border-2 border-red-200 dark:border-red-900/50">

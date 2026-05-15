@@ -141,19 +141,27 @@ def my_activity(user: dict = Depends(current_user)):
 
 @router.post("/me/become-artist")
 def become_artist(user: dict = Depends(current_user)):
-    print("DEBUG: become_artist endpoint called")
     if user["role"] == "artist":
         raise HTTPException(status_code=409, detail="Already an artist")
     if user["role"] == "admin":
         raise HTTPException(status_code=409, detail="Admins cannot change their role")
 
+    # Update user role
     user["role"] = "artist"
     db = store.db()
 
+    # Update in users list
+    users = db.get("users", [])
+    for u in users:
+        if u["id"] == user["id"]:
+            u["role"] = "artist"
+            break
+
     # Create artist profile if doesn't exist
-    artist = next((a for a in db.get("artists", []) if a["id"] == user["id"]), None)
-    if not artist:
-        db.setdefault("artists", []).append({
+    artists = db.get("artists", [])
+    artist_exists = any(a["id"] == user["id"] for a in artists)
+    if not artist_exists:
+        artists.append({
             "id": user["id"],
             "name": user["name"],
             "avatar": user["avatar"],

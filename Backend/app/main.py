@@ -1,5 +1,6 @@
 import time
 import uuid
+# Force reload: updated store.py for MongoDB support
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -8,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, store
+from .database import get_client, close_connection
 from .exceptions import APIError, InternalServerError, ValidationError
 from .logging_config import configure_logging, get_logger, log_request
 from .routers import (
@@ -27,7 +29,12 @@ log = configure_logging()
 
 
 def create_app() -> FastAPI:
-    store.load()
+    try:
+        get_client()
+        store.initialize()
+    except Exception as e:
+        print(f"Warning: MongoDB initialization failed: {e}")
+        print("Falling back to in-memory data")
 
     app = FastAPI(
         title="Artellect AI Backend",
@@ -170,6 +177,11 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(uploads.router)
     app.include_router(extras.router)
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Close MongoDB connection on shutdown."""
+        close_connection()
 
     return app
 
