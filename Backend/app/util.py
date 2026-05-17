@@ -73,3 +73,4 @@ def serialize_artwork(art: dict, viewer: Optional[dict] = None, *, include_comme
         "comments": db.get("comments", {}).get(art["id"], []) if include_comments else None,
     }
     return out
+// exmple
