@@ -29,7 +29,7 @@ const Dashboard: React.FC = () => {
       ]);
       setStats(statsData);
       setListings(listingsData);
-      setRevenueData(revenueChartData);
+      setRevenueData(revenueChartData as any[]);
     } finally {
       setLoading(false);
     }

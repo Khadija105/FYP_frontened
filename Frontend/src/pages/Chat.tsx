@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout, PageContainer } from "../layouts/MainLayout";
 import { Button, Input, Card } from "../components/ui";
-import { ArtworkCard } from "../components/common/Cards";
 import { useChatStore } from "../store";
-import { chatbotAPI } from "../services/api";
 import { MOCK_ARTWORKS } from "../data/mockData";
 
 const Chat: React.FC = () => {

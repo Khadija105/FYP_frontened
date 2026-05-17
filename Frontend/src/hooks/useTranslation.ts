@@ -6,7 +6,7 @@ export const useTranslation = () => {
 
   const t = (key: TranslationKey): string => {
     const lang = (language as Language) || "en";
-    return translations[lang]?.[key] || translations["en"]?.[key] || key;
+    return translations[lang]?.[key as keyof typeof translations[keyof typeof translations]] || translations["en"]?.[key as keyof typeof translations["en"]] || key;
   };
 
   return { t, language };

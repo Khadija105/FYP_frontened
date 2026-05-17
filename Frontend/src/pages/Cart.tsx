@@ -40,7 +40,7 @@ const Cart: React.FC = () => {
     try {
       const result = await cartAPI.checkout(items);
       clearCart();
-      navigate(`/checkout-success?orderId=${result.orderId}`);
+      navigate(`/checkout-success?orderId=${result.id}`);
     } catch (error) {
       console.error("Checkout error:", error);
     } finally {

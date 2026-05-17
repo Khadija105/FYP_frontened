@@ -108,7 +108,7 @@ export const Header: React.FC = () => {
                 </Button>
               </Link>
               <Link to="/register">
-                <Button size="sm">{t("signup")}</Button>
+                <Button size="sm">{t("signUp")}</Button>
               </Link>
             </div>
           ) : (

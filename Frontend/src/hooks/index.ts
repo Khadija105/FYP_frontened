@@ -112,7 +112,7 @@ export const useIntersectionObserver = (
 };
 
 export const useFetch = <T,>(url: string, delay?: number) => {
-  const [data, setData] = useState<T | null>(null);
+  const [data] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
