@@ -20,7 +20,7 @@ interface Settings {
 const UserSettings: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { isDark, toggleTheme } = useThemeStore();
+  const { isDark, toggleDarkMode } = useThemeStore();
   const { isAuthenticated, bootstrapping } = useAuthStore();
 
   const [settings, setSettings] = useState<Settings>({
@@ -80,9 +80,9 @@ const UserSettings: React.FC = () => {
   const handleThemeChange = (theme: "light" | "dark" | "auto") => {
     setSettings({ ...settings, theme });
     if (theme === "dark" && !isDark) {
-      toggleTheme();
+      toggleDarkMode();
     } else if (theme === "light" && isDark) {
-      toggleTheme();
+      toggleDarkMode();
     }
   };
 
